@@ -24,8 +24,8 @@ typedef struct thread {
 	pthread_mutex_t* openMutex;  
 };
 
-void* request(void* id);
-void* resolve(void* id);
+void* request(void* threadid);
+void* resolve(void* threadid);
 
 
 
