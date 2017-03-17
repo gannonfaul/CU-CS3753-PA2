@@ -97,6 +97,7 @@ int main(int argc, char *argv[]) {
 	printf("Thread creation complete.\n");
 
 	queue_cleanup(&hosts);
+
 	pthread_mutex_destroy(&queue_lock);
 	pthread_mutex_destroy(&out_lock);
 
@@ -113,7 +114,7 @@ int main(int argc, char *argv[]) {
 void* request(void* threadid) {
 	FILE* inFile = fopen(threadid, "r");
 	char hostname[MAX_NAME_LENGTH];
-	char* payload_in;
+	
 
 	if (!inFile) {
 		perror("Error opening input file.\n");
@@ -122,11 +123,13 @@ void* request(void* threadid) {
 
 	/* Scan in domain name */
 	while (fscanf(inFile, INPUTFS, hostname) > 0) {
-		payload_in = malloc(MAX_NAME_LENGTH);
-		strncpy(payload_in, hostname, MAX_NAME_LENGTH);
-		
+
 		/* Lock the queue*/
 		pthread_mutex_lock(&queue_lock);
+
+		char* payload_in;
+		payload_in = malloc(sizeof(hostname));
+		strncpy(payload_in, hostname, sizeof(hostname));
 
 		/* Test for full queue */
 	    	while(queue_is_full(&hosts)){
@@ -145,20 +148,21 @@ void* request(void* threadid) {
 			fprintf(stderr,	"error: queue_push failed!\n");
 				
 		}
-
+		
+		free(payload_in);
+		
 		/* Unlock queue */
 		pthread_mutex_unlock(&queue_lock);
 	}
 
 	fclose(inFile);
-	free(payload_in);
 	return NULL;
 }
 
 void* resolve(void* threadid) {
 	FILE* outFile = fopen(threadid, "a");
 	char ipString[MAX_IP_LENGTH];
-	char* payload_out;
+	
 
 	if(!outFile) {
 		perror("Error opening output file.\n");
@@ -169,8 +173,9 @@ void* resolve(void* threadid) {
 	while((!queue_is_empty(&hosts)) || (requestsRemaining != 0)){
 		pthread_mutex_lock(&queue_lock);
 		//printf("Inside while queue != empty and requests remain\n");
-
+		
 		/* Pop hostname of the queue */
+		char* payload_out;
 		payload_out = queue_pop(&hosts);
 		
 		/* Check if queue was empty */
@@ -182,8 +187,8 @@ void* resolve(void* threadid) {
 		} else {
 	
 			/* Write to output */
-			if (dnslookup(payload_out, ipString, MAX_IP_LENGTH) == UTIL_FAILURE) {
-				strncpy(ipString, "", MAX_IP_LENGTH);
+			if (dnslookup(payload_out, ipString, sizeof(ipString)) == UTIL_FAILURE) {
+				strncpy(ipString, "", sizeof(ipString));
 			}
 		
 			printf("%s, %s\n", payload_out, ipString);
