@@ -135,7 +135,7 @@ void* request(void* threadid) {
 				"queue_is_full reports that "
 				"the queue is full\n");*/
 			pthread_mutex_unlock(&queue_lock);
-			//printf("Inside full queue.\n");
+			printf("Inside full queue.\n");
 			usleep(rand() % 100 + 1);
 			pthread_mutex_lock(&queue_lock);
 	    	}
@@ -166,7 +166,7 @@ void* resolve(void* threadid) {
 	}
 
 	/* Read hostname and lookup IP Address */
-	while(!queue_is_empty(&hosts) && requestsRemaining != 0){
+	while((!queue_is_empty(&hosts)) || (requestsRemaining != 0)){
 		pthread_mutex_lock(&queue_lock);
 		//printf("Inside while queue != empty and requests remain\n");
 
@@ -176,14 +176,11 @@ void* resolve(void* threadid) {
 		/* Check if queue was empty */
 		if (payload_out == NULL) {
 			pthread_mutex_unlock(&queue_lock);
-			//printf("Inside payload_out == NULL.\n");
+			printf("Inside payload_out == NULL.\n");
 			usleep(rand() % 100 + 1);
 			pthread_mutex_lock(&queue_lock);
 		} else {
-			/* Unlock queue */
-			pthread_mutex_unlock(&queue_lock);
-
-
+	
 			/* Write to output */
 			if (dnslookup(payload_out, ipString, MAX_IP_LENGTH) == UTIL_FAILURE) {
 				strncpy(ipString, "", MAX_IP_LENGTH);
@@ -195,9 +192,13 @@ void* resolve(void* threadid) {
 
 			fprintf(outFile, "%s, %s\n", payload_out, ipString);
 
-			pthread_mutex_unlock(&out_lock);	
+			pthread_mutex_unlock(&out_lock);
+				
 	
-		}	
+		}
+
+		/* Unlock Queue */
+		pthread_mutex_unlock(&queue_lock);	
 	}
 	
 	fclose(outFile);
