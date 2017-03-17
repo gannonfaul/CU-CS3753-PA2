@@ -27,6 +27,7 @@
 3. > make
 
 4. > ./multi-lookup names*.txt results.txt
+
 ..* You may include however many input files for names*.txt as needed
 
 5. > gedit results.txt
