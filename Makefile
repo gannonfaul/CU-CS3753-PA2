@@ -15,7 +15,7 @@ queueTest: queueTest.o queue.o
 pthread-hello: pthread-hello.o
 	$(CC) $(LFLAGS) $^ -o $@
 
-multi-lookup.o: lookup.c
+multi-lookup.o: multi-lookup.c multi-lookup.h
 	$(CC) $(CFLAGS) $<
 
 queueTest.o: queueTest.c

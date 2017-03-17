@@ -1,4 +1,4 @@
-#include <pthread>
+#include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,6 +8,12 @@
 #include "queue.h"
 #include "multi-lookup.h"
 
+// Global Variables
+
+queue hosts;
+
+pthread_mutex_t queue_lock;
+pthread_mutex_t out_lock;
 
 /*
  * --------------------
@@ -26,17 +32,15 @@ int main(int argc, char *argv[]) {
     	}
 	
 	//Number of Input Files
-	int numFiles = argc - 2
-        if (numFiles > MAX_INPUT_FILES) {
+	int numThreads = argc - 2;
+        if (numThreads > MAX_INPUT_FILES) {
 		fprintf(stderr, "Too many input files: %d\n", (argc - 2));
 		fprintf(stderr, "Maximum number of input files: %d\n", MAX_INPUT_FILES);
 		return EXIT_FAILURE;
-	} else {
-		FILE* input[numFiles]
 	}
 
 	//Number of Resolver Threads
-	int numResolvers = sysconf(_SC_NPROCESSORS_ONLN);
+	int numResolvers = 5;
 	if (numResolvers > MAX_RESOLVER_THREADS) {
 		fprintf(stderr, "Too many resolver threads: %d\n", numResolvers);
 		fprintf(stderr, "Maximum number of resovler threads: %d\n", MAX_RESOLVER_THREADS);
@@ -48,13 +52,48 @@ int main(int argc, char *argv[]) {
 	}
 
 	
-	pthread_t requestThreads[numFiles];
+	pthread_t requestThreads[numThreads];
 	pthread_t resolveThreads[numResolvers];
 
-	// Still Implementing...
+	int rc;
+
+	pthread_mutex_init(&queue_lock, NULL);
+	pthread_mutex_init(&out_lock, NULL);
+
+	/* Initialize Queue */
+    	if(queue_init(&hosts, -1) == QUEUE_FAILURE){
+		fprintf(stderr,
+			"error: queue_init failed!\n");
+    	}
+
+	for (int i = 0; i < numThreads; i++) {
+		rc = pthread_create(&(requestThreads[i]), NULL, request, (void*)argv[i + 1]);
+		if (rc) {
+			printf("pthread_create() error on requests.");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	for (int i = 0; i < numResolvers; i++) {
+		rc = pthread_create(&(resolveThreads[i]), NULL, resolve, (void*)argv[argc - 1]);
+		if (rc) {
+			printf("pthread_create() error on resolutions.");
+			exit(EXIT_FAILURE);
+		}
+	}
 
 
-	return EXIT_SUCCESS;
+	for (int i = 0; i < numResolvers; i++) {
+		pthread_join(requestThreads[i], NULL);
+	}
+
+	printf("Thread creation complete.");
+
+	queue_cleanup(&hosts);
+	pthread_mutex_destroy(&queue_lock);
+	pthread_mutex_destroy(&out_lock);
+
+	return 0;
 }
 
 
@@ -65,15 +104,86 @@ int main(int argc, char *argv[]) {
  */
 
 void* request(void* threadid) {
-	//Implement Request Function
+	FILE* inFile = fopen(threadid, "r");
+	char hostname[MAX_NAME_LENGTH];
+	char* payload_in;
 
+	if (!inFile) {
+		perror("Error opening input file.\n");
+		return EXIT_FAILURE;
+	}
 
+	/* Scan in domain name */
+	while (fscanf(inFile, INPUTFS, hostname) > 0) {
+		payload_in = malloc(MAX_NAME_LENGTH);
+		strncpy(payload_in, hostname, MAX_NAME_LENGTH);
+		
+		/* Lock the queue*/
+		pthread_mutex_lock(&queue_lock);
+
+		/* Test for full queue */
+	    	while(queue_is_full(&hosts)){
+			/* Unlock and wait if queue is full */
+			fprintf(stderr,
+				"queue_is_full reports that "
+				"the queue is full\n");
+			pthread_mutex_unlock(&queue_lock);
+			usleep(rand() % 100 + 1);
+			pthread_mutex_lock(&queue_lock);
+	    	}
+
+		/* Push hostname to queue */
+		if(queue_push(&hosts, payload_in) == QUEUE_FAILURE) {
+			fprintf(stderr,	"error: queue_push failed!\n");
+				
+		}
+
+		/* Unlock queue */
+		pthread_mutex_unlock(&queue_lock);
+	}
+	return NULL;
 }
 
 void* resolve(void* threadid) {
-	//Implement Resolve Function
+	FILE* outFile = fopen(threadid, "a");
+	char* ipString[MAX_IP_LENGTH];
+	char* payload_out;
+
+	if(!outFile) {
+		perror("Error opening output file.");
+		return EXIT_FAILURE;
+	}
+
+	/* Read hostname and lookup IP Address */
+	pthread_mutex_lock(&queue_lock);
+	while(queue_is_empty(&hosts)){
+		pthread_mutex_unlock(&queue_lock);
+		fprintf(stderr,
+			"queue_is_empty reports that "
+			"the queue is empty\n");
+		usleep(rand() % 100 + 1);
+		pthread_mutex_lock(&queue_lock);
+    	}
+	
+	payload_out = queue_pop(&hosts);
+		
+	/* Unlock queue */
+	pthread_mutex_unlock(&queue_lock);
 
 
+	/* Write to output */
+	if (dnslookup(payload_out, ipString, MAX_IP_LENGTH) == UTIL_FAILURE) {
+		strncpy(ipString, "", MAX_IP_LENGTH);
+	}
+	pthread_mutex_lock(&out_lock);
+
+	fprintf(outFile, "%s,%s\n", payload_out, ipString);
+
+	pthread_mutex_unlock(&out_lock);	
+
+	fprintf(outFile, "%s\n", threadid);
+	
+	return NULL;
 }
 
 

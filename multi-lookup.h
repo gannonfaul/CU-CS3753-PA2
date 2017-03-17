@@ -1,7 +1,7 @@
-#ifndef MULTI-LOOKUP_H
-#define MULTI-LOOKUP_H
+#ifndef MULTI_LOOKUP_H
+#define MULTI_LOOKUP_H
 
-#include <pthread>
+#include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -17,18 +17,7 @@
 #define USAGE "<inputFilePath> <outputFilePath>"
 #define INPUTFS "%1024s"
 
-typedef struct thread {
-	queue* hostnames;
-	FILE* threadFile;
-	pthread_mutex_t* bufferMutex;
-	pthread_mutex_t* openMutex;  
-};
-
 void* request(void* threadid);
 void* resolve(void* threadid);
-
-
-
-
 
 #endif
