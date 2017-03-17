@@ -149,7 +149,6 @@ void* request(void* threadid) {
 				
 		}
 		
-		free(payload_in);
 		
 		/* Unlock queue */
 		pthread_mutex_unlock(&queue_lock);
@@ -201,6 +200,8 @@ void* resolve(void* threadid) {
 				
 	
 		}
+		
+		free(payload_out);
 
 		/* Unlock Queue */
 		pthread_mutex_unlock(&queue_lock);	
