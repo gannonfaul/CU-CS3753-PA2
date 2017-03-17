@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	//Number of Resolver Threads
-	int numResolvers = MIN_RESOLVER_THREADS;
+	int numResolvers = MAX_RESOLVER_THREADS;
 	if (numResolvers > MAX_RESOLVER_THREADS) {
 		fprintf(stderr, "Too many resolver threads: %d\n", numResolvers);
 		fprintf(stderr, "Maximum number of resovler threads: %d\n", MAX_RESOLVER_THREADS);
@@ -63,9 +63,8 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_init(&out_lock, NULL);
 
 	/* Initialize Queue */
-    	if(queue_init(&hosts, -1) == QUEUE_FAILURE){
-		fprintf(stderr,
-			"error: queue_init failed!\n");
+    	if(!queue_init(&hosts, -1)){
+		fprintf(stderr, "error: queue_init failed!\n");
     	}
 
 	for (int i = 0; i < numThreads; i++) {
@@ -118,7 +117,7 @@ void* request(void* threadid) {
 
 	if (!inFile) {
 		perror("Error opening input file.\n");
-		return EXIT_FAILURE;
+		exit(EXIT_FAILURE);
 	}
 
 	/* Scan in domain name */
@@ -136,6 +135,7 @@ void* request(void* threadid) {
 				"queue_is_full reports that "
 				"the queue is full\n");*/
 			pthread_mutex_unlock(&queue_lock);
+			//printf("Inside full queue.\n");
 			usleep(rand() % 100 + 1);
 			pthread_mutex_lock(&queue_lock);
 	    	}
@@ -157,24 +157,26 @@ void* request(void* threadid) {
 
 void* resolve(void* threadid) {
 	FILE* outFile = fopen(threadid, "a");
-	char* ipString[MAX_IP_LENGTH];
+	char ipString[MAX_IP_LENGTH];
 	char* payload_out;
 
 	if(!outFile) {
-		perror("Error opening output file.");
-		return EXIT_FAILURE;
+		perror("Error opening output file.\n");
+		exit(EXIT_FAILURE);
 	}
 
 	/* Read hostname and lookup IP Address */
-	pthread_mutex_lock(&queue_lock);
 	while(!queue_is_empty(&hosts) && requestsRemaining != 0){
-	
+		pthread_mutex_lock(&queue_lock);
+		//printf("Inside while queue != empty and requests remain\n");
+
 		/* Pop hostname of the queue */
 		payload_out = queue_pop(&hosts);
 		
 		/* Check if queue was empty */
 		if (payload_out == NULL) {
 			pthread_mutex_unlock(&queue_lock);
+			//printf("Inside payload_out == NULL.\n");
 			usleep(rand() % 100 + 1);
 			pthread_mutex_lock(&queue_lock);
 		} else {
@@ -195,9 +197,7 @@ void* resolve(void* threadid) {
 
 			pthread_mutex_unlock(&out_lock);	
 	
-		}
-		free(payload_out);
-	
+		}	
 	}
 	
 	fclose(outFile);

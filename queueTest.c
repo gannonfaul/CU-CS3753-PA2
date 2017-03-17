@@ -46,7 +46,7 @@ int main(int argc, char* argv[]){
     }
 
     /* Initialize Queue */
-    if(queue_init(&q, qSize) == QUEUE_FAILURE){
+    if(!queue_init(&q, qSize)){
 	fprintf(stderr,
 		"error: queue_init failed!\n");
     }
