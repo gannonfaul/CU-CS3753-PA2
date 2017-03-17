@@ -15,6 +15,8 @@ queue hosts;
 pthread_mutex_t queue_lock;
 pthread_mutex_t out_lock;
 
+int requestsRemaining = 1;
+
 /*
  * --------------------
  *         MAIN
@@ -40,7 +42,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	//Number of Resolver Threads
-	int numResolvers = 5;
+	int numResolvers = MIN_RESOLVER_THREADS;
 	if (numResolvers > MAX_RESOLVER_THREADS) {
 		fprintf(stderr, "Too many resolver threads: %d\n", numResolvers);
 		fprintf(stderr, "Maximum number of resovler threads: %d\n", MAX_RESOLVER_THREADS);
@@ -83,11 +85,17 @@ int main(int argc, char *argv[]) {
 	}
 
 
-	for (int i = 0; i < numResolvers; i++) {
+	for (int i = 0; i < numThreads; i++) {
 		pthread_join(requestThreads[i], NULL);
 	}
+	
+	requestsRemaining = 0;
 
-	printf("Thread creation complete.");
+	for (int i = 0; i < numResolvers; i++) {
+		pthread_join(resolveThreads[i], NULL);
+	}
+
+	printf("Thread creation complete.\n");
 
 	queue_cleanup(&hosts);
 	pthread_mutex_destroy(&queue_lock);
@@ -124,9 +132,9 @@ void* request(void* threadid) {
 		/* Test for full queue */
 	    	while(queue_is_full(&hosts)){
 			/* Unlock and wait if queue is full */
-			fprintf(stderr,
+			/*fprintf(stderr,
 				"queue_is_full reports that "
-				"the queue is full\n");
+				"the queue is full\n");*/
 			pthread_mutex_unlock(&queue_lock);
 			usleep(rand() % 100 + 1);
 			pthread_mutex_lock(&queue_lock);
@@ -141,6 +149,9 @@ void* request(void* threadid) {
 		/* Unlock queue */
 		pthread_mutex_unlock(&queue_lock);
 	}
+
+	fclose(inFile);
+	free(payload_in);
 	return NULL;
 }
 
@@ -156,33 +167,40 @@ void* resolve(void* threadid) {
 
 	/* Read hostname and lookup IP Address */
 	pthread_mutex_lock(&queue_lock);
-	while(queue_is_empty(&hosts)){
-		pthread_mutex_unlock(&queue_lock);
-		fprintf(stderr,
-			"queue_is_empty reports that "
-			"the queue is empty\n");
-		usleep(rand() % 100 + 1);
-		pthread_mutex_lock(&queue_lock);
-    	}
+	while(!queue_is_empty(&hosts) && requestsRemaining != 0){
 	
-	payload_out = queue_pop(&hosts);
+		/* Pop hostname of the queue */
+		payload_out = queue_pop(&hosts);
 		
-	/* Unlock queue */
-	pthread_mutex_unlock(&queue_lock);
+		/* Check if queue was empty */
+		if (payload_out == NULL) {
+			pthread_mutex_unlock(&queue_lock);
+			usleep(rand() % 100 + 1);
+			pthread_mutex_lock(&queue_lock);
+		} else {
+			/* Unlock queue */
+			pthread_mutex_unlock(&queue_lock);
 
 
-	/* Write to output */
-	if (dnslookup(payload_out, ipString, MAX_IP_LENGTH) == UTIL_FAILURE) {
-		strncpy(ipString, "", MAX_IP_LENGTH);
-	}
-	pthread_mutex_lock(&out_lock);
+			/* Write to output */
+			if (dnslookup(payload_out, ipString, MAX_IP_LENGTH) == UTIL_FAILURE) {
+				strncpy(ipString, "", MAX_IP_LENGTH);
+			}
+		
+			printf("%s, %s\n", payload_out, ipString);
+			
+			pthread_mutex_lock(&out_lock);
 
-	fprintf(outFile, "%s,%s\n", payload_out, ipString);
+			fprintf(outFile, "%s, %s\n", payload_out, ipString);
 
-	pthread_mutex_unlock(&out_lock);	
-
-	fprintf(outFile, "%s\n", threadid);
+			pthread_mutex_unlock(&out_lock);	
 	
+		}
+		free(payload_out);
+	
+	}
+	
+	fclose(outFile);
 	return NULL;
 }
 
